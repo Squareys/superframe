@@ -10,10 +10,15 @@ AFRAME.registerComponent('gltf-part', {
 
   update: function () {
     var el = this.el;
+    var sceneEl = document.querySelector('a-scene');
     if (!this.data.part && this.data.src) { return; }
+
     this.getModel(function (modelPart) {
       if (!modelPart) { return; }
+
+      sceneEl.systems['material'].registerMaterial(modelPart.material);
       el.setObject3D('mesh', modelPart)
+      el.emit('model-loaded', {format: 'gltf', model: modelPart});
     });
   },
 
@@ -46,7 +51,11 @@ AFRAME.registerComponent('gltf-part', {
         delete LOADING_MODELS[self.data.src];
         cb(self.selectFromModel(model));
         resolve(model);
-      }, function () { }, console.error);
+      }, function () {}, function gltfFailed (error) {
+        var message = (error && error.message) ? error.message : 'Failed to load glTF model';
+        console.warn(message);
+        this.el.emit('model-error', {format: 'gltf', src: self.data.src});
+      }.bind(self));
     });
   },
 
@@ -54,7 +63,6 @@ AFRAME.registerComponent('gltf-part', {
    * Search for the part name and look for a mesh.
    */
   selectFromModel: function (model) {
-    var mesh;
     var part;
 
     part = model.getObjectByName(this.data.part);
@@ -63,13 +71,11 @@ AFRAME.registerComponent('gltf-part', {
       return;
     }
 
-    mesh = part.getObjectByProperty('type', 'Mesh').clone(true);
-
-    if (this.data.buffer) {
-      mesh.geometry = mesh.geometry.toNonIndexed();
-      return mesh;
+    var meshObject = part.getObjectByProperty('type', 'Mesh');
+    if(!meshObject) {
+      console.error('[gltf-part] `' + this.data.part + '` has no Mesh.');
+      return;
     }
-    mesh.geometry = new THREE.Geometry().fromBufferGeometry(mesh.geometry);
-    return mesh;
+      return new THREE.Mesh(meshObject.geometry, meshObject.material);
   }
 });
